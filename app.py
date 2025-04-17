@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Helper function to display multiclass metrics - defined BEFORE it's called
-def display_multiclass_metrics(y_true, y_pred, cm, label_map, num_classes):
+def display_multiclass_metrics(y_true, y_pred, cm, label_map, num_classes, threshold):
     # Calculate multiclass metrics
     precision_macro = precision_score(y_true, y_pred, average='macro', zero_division=0)
     recall_macro = recall_score(y_true, y_pred, average='macro', zero_division=0)
@@ -16,43 +16,43 @@ def display_multiclass_metrics(y_true, y_pred, cm, label_map, num_classes):
     report = classification_report(y_true, y_pred, output_dict=True, zero_division=0)
     
     # Display confusion matrix
-    st.subheader("Confusion Matrix")
+    st.subheader("Results Table")
     
     # Create DataFrame for better visualization
     cm_df = pd.DataFrame(cm, 
-        index=[f'True: {label_map[i]}' for i in range(num_classes)],
-        columns=[f'Pred: {label_map[i]}' for i in range(num_classes)])
+        index=[f'Actual: {label_map[i]}' for i in range(num_classes)],
+        columns=[f'Predicted: {label_map[i]}' for i in range(num_classes)])
     
     st.dataframe(cm_df)
     
     # Display overall metrics
-    st.subheader("Overall Metrics (Macro Average)")
+    st.subheader("Overall Accuracy Measures")
     
     metrics_col1, metrics_col2 = st.columns(2)
     
     with metrics_col1:
-        # F1 Score
-        st.metric("F1 Score (Macro)", f"{f1_macro:.4f}")
+        # Overall Score
+        st.metric("Overall Accuracy (F1) Score", f"{f1_macro:.4f}")
         st.markdown("""
-        **F1 Score (Macro) Explanation:**  
-        The F1 score calculated independently for each class and then averaged.
-        This gives equal weight to each class, regardless of its frequency.
+        **What is the Overall Accuracy (F1) Score?**  
+        This score combines how good our model is at correctly identifying items (precision) 
+        and how good it is at finding all the items it should find (recall).
         
-        Formula: F1 = 2 × (Precision × Recall) / (Precision + Recall)
+        A score of 1.0 means perfect performance, while 0.0 means the worst possible performance.
         """)
     
     with metrics_col2:
-        # Precision and Recall
-        st.metric("Precision (Macro)", f"{precision_macro:.4f}")
-        st.metric("Recall (Macro)", f"{recall_macro:.4f}")
+        # Success rates
+        st.metric("Correct Classification Rate (Precision)", f"{precision_macro:.4f}")
+        st.metric("Discovery Rate (Recall)", f"{recall_macro:.4f}")
         st.markdown("""
-        **Macro Average Explanation:**  
-        The macro average calculates metrics for each class independently, then takes the average.
-        This treats all classes equally regardless of how many samples each has.
+        **What do these rates mean?**  
+        - **Correct Classification Rate**: When the model predicts something belongs to a category, how often is it right?
+        - **Discovery Rate**: How many items that should be found in each category are actually found?
         """)
     
     # Display per-class metrics
-    st.subheader("Per-Class Metrics")
+    st.subheader("Performance by Category")
     
     # Create metrics table
     class_metrics = []
@@ -62,11 +62,11 @@ def display_multiclass_metrics(y_true, y_pred, cm, label_map, num_classes):
         if str(i) in report:
             class_data = report[str(i)]
             class_metrics.append({
-                'Class': class_name,
-                'Precision': f"{class_data['precision']:.4f}",
-                'Recall': f"{class_data['recall']:.4f}",
-                'F1 Score': f"{class_data['f1-score']:.4f}",
-                'Support': int(class_data['support'])
+                'Category': class_name,
+                'Correct Classification Rate': f"{class_data['precision']:.4f}",
+                'Discovery Rate': f"{class_data['recall']:.4f}",
+                'Overall Score': f"{class_data['f1-score']:.4f}",
+                'Number of Items': int(class_data['support'])
             })
     
     class_metrics_df = pd.DataFrame(class_metrics)
@@ -74,30 +74,157 @@ def display_multiclass_metrics(y_true, y_pred, cm, label_map, num_classes):
     
     # Explanation of per-class metrics
     st.markdown("""
-    **Per-Class Metrics Explanation:**
-    - **Precision**: For each class, what percentage of predictions for this class were correct. 
-    - **Recall**: For each class, what percentage of actual instances of this class were correctly identified
-    - **F1 Score**: The harmonic mean of precision and recall for each class
-    - **Support**: The number of actual occurrences of the class in the dataset
+    **What do these numbers mean for each category?**
+    - **Correct Classification Rate**: When the model says an item belongs to this category, how often is it right?
+    - **Discovery Rate**: How many items that actually belong to this category did the model correctly find?
+    - **Overall Score**: A balanced measure that combines the above two rates
+    - **Number of Items**: How many items of this category were in your data
     
-    These metrics help you identify which classes your model struggles with the most.
+    Lower scores show which categories your model has trouble with.
     """)
     
     # Display confusion matrix explanation
     st.markdown("""
-    **Reading the Confusion Matrix:**
-    - Each row represents the actual class
-    - Each column represents the predicted class
-    - The diagonal elements show correct predictions
-    - Off-diagonal elements show misclassifications
+    **How to read the Results Table:**
+    - Each row shows the actual category
+    - Each column shows what the model predicted
+    - The diagonal numbers (top-left to bottom-right) show correct predictions
+    - All other numbers show mistakes
     
-    For example, the value at row "True: low" and column "Pred: medium" shows how many "low" instances were incorrectly classified as "medium".
+    For example, if you see a number "5" at the row "Actual: low" and column "Predicted: medium", 
+    it means 5 items that were actually "low" were incorrectly classified as "medium".
     """)
 
+    # Evaluate against risk tolerance threshold
+    st.subheader("Risk Assessment")
+    
+    # Compare the F1 score with the threshold
+    if f1_macro >= threshold:
+        st.success(f"✅ Your model meets the required accuracy for your selected quality requirement! (Score: {f1_macro:.4f}, Required: {threshold:.2f})")
+        st.markdown(f"""
+        **Recommendation**: Your model's accuracy is acceptable for your selected quality requirement.
+        
+        You can:
+        - Deploy this model with confidence
+        - Monitor performance over time to ensure it maintains this level of accuracy
+        - Consider saving this model as your baseline
+        """)
+    else:
+        st.error(f"❌ Your model does not meet the required accuracy. (Score: {f1_macro:.4f}, Required: {threshold:.2f})")
+        
+        # Show targeted improvement suggestions based on issues detected
+        if precision_macro < threshold:
+            st.warning(f"🔍 **Issue detected**: Low Correct Classification Rate ({precision_macro:.4f})")
+            st.markdown(f"""
+            **Targeted fix**: Your model is saying "yes" too often, creating false alarms.
+            
+            Try:
+            - Making your model more selective about what belongs to a category
+            - Increasing the confidence threshold for positive predictions
+            - Adding more examples of negative cases to your training data
+            """)
+        
+        if recall_macro < threshold:
+            st.warning(f"🔍 **Issue detected**: Low Discovery Rate ({recall_macro:.4f})")
+            st.markdown(f"""
+            **Targeted fix**: Your model is missing too many items it should find.
+            
+            Try:
+            - Making your model less strict about what belongs to a category
+            - Decreasing the confidence threshold for positive predictions
+            - Adding more examples of positive cases to your training data
+            """)
+        
+        # Check for class imbalance
+        if len(class_metrics) > 1:
+            min_support = min([item['Number of Items'] for item in class_metrics])
+            max_support = max([item['Number of Items'] for item in class_metrics])
+            if max_support > min_support * 3:  # If max class is 3x larger than min class
+                st.warning("🔍 **Issue detected**: Uneven number of examples between categories")
+                st.markdown("""
+                **Targeted fix**: Some categories have too few examples compared to others.
+                
+                Try:
+                - Collecting more examples of the rare categories
+                - Using data balancing techniques like oversampling or undersampling
+                - Using weighted loss functions during training
+                """)
+        
+        # Find the most confused classes
+        if num_classes > 2:
+            confused_pairs = []
+            for i in range(num_classes):
+                for j in range(num_classes):
+                    if i != j and cm[i, j] > 0:
+                        confused_pairs.append((i, j, cm[i, j]))
+            
+            if confused_pairs:
+                confused_pairs.sort(key=lambda x: x[2], reverse=True)
+                top_confusion = confused_pairs[0]
+                class_i, class_j, confusion_count = top_confusion
+                
+                st.warning(f"🔍 **Issue detected**: Confusion between categories")
+                st.markdown(f"""
+                **Targeted fix**: Your model often confuses **{label_map[class_i]}** with **{label_map[class_j]}** 
+                ({confusion_count} times).
+                
+                Try:
+                - Finding better features that distinguish between these specific categories
+                - Adding more training examples of these categories
+                - Creating a specialized model just for these hard-to-distinguish categories
+                """)
+    
+    # Always show general tips
+    with st.expander("General Tips for Improving Your Results", expanded=f1_macro < threshold):
+        st.markdown("""
+        - **Low Correct Classification Rate** (many false alarms): Your model is saying "yes" too often. 
+          Try making it more selective about what it identifies as belonging to a category.
+        
+        - **Low Discovery Rate** (many misses): Your model is missing too many items it should find. 
+          Try making it less strict about what it considers to belong to a category.
+        
+        - **Low Overall Score**: Consider adding more examples, finding better features that distinguish 
+          between categories, or trying a different type of model.
+        
+        - **Uneven Number of Items**: If some categories have very few examples compared to others, 
+          try to collect more examples of the rare categories.
+        
+        - **Confusion Between Specific Categories**: Look at the Results Table to see which categories 
+          are getting mixed up. Focus on finding ways to better distinguish between those specific categories.
+        """)
+    
+    # Return the F1 score for evaluation elsewhere
+    return f1_macro
+
 # Set page title and configuration
-st.set_page_config(page_title="F1 Score Calculator", layout="wide")
-st.title("Classification Metrics Calculator")
-st.write("Upload your dataset with ground truth and predicted values to calculate F1 score and other metrics.")
+st.set_page_config(page_title="Classification Results Viewer", layout="wide")
+st.title("Classification Results Viewer")
+st.write("Upload your prediction results to see how well your model is performing.")
+
+# Add risk tolerance slider
+st.sidebar.subheader("Quality Requirements")
+accuracy_requirement = st.sidebar.slider(
+    "Select your accuracy requirement (%):",
+    min_value=60,
+    max_value=90,
+    value=75,
+    step=1,
+    help="Higher values require better model performance"
+)
+
+# Map the accuracy percentage to a risk tolerance level
+if 60 <= accuracy_requirement <= 70:
+    risk_tolerance = "High"
+    st.sidebar.markdown("**High Risk Tolerance (60-70%)**: Your application can accept more errors. Examples: Initial data exploration, non-critical filtering tasks, preliminary research.")
+elif 71 <= accuracy_requirement <= 84:
+    risk_tolerance = "Medium"
+    st.sidebar.markdown("**Medium Risk Tolerance (71-84%)**: Your application requires good accuracy. Examples: Customer recommendations, content categorization, basic automation.")
+else:  # 85-90
+    risk_tolerance = "Low"
+    st.sidebar.markdown("**Low Risk Tolerance (85-90%)**: Your application requires high accuracy. Examples: Medical diagnosis, safety systems, financial compliance.")
+
+# Define threshold based on accuracy requirement
+threshold = accuracy_requirement / 100.0
 
 # File uploader
 uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=["csv", "xlsx", "xls"])
@@ -122,13 +249,13 @@ if uploaded_file is not None:
         col1, col2 = st.columns(2)
         
         with col1:
-            ground_truth_col = st.selectbox("Select ground truth column", columns)
+            ground_truth_col = st.selectbox("Select the column with actual values (ground truth)", columns)
         
         with col2:
-            predicted_col = st.selectbox("Select predicted column", columns, index=min(1, len(columns)-1))
+            predicted_col = st.selectbox("Select the column with predicted values", columns, index=min(1, len(columns)-1))
         
         # Button to calculate metrics
-        if st.button("Calculate Metrics"):
+        if st.button("Show Results"):
             # Wrap everything in a try-except to catch any errors
             try:
                 # Get the ground truth and predicted values
@@ -164,7 +291,7 @@ if uploaded_file is not None:
                 y_true_mapped = np.array([value_map[str(val)] for val in y_true])
                 y_pred_mapped = np.array([value_map[str(val)] for val in y_pred])
                 
-                st.info(f"Values mapped to numbers: {value_map}")
+                st.info(f"Categories found in your data: {', '.join(unique_values)}")
                 
                 # Use the mapped values for all calculations
                 y_true = y_true_mapped
@@ -179,9 +306,9 @@ if uploaded_file is not None:
                 # Calculate metrics
                 if num_classes == 2:
                     # Binary classification case
-                    binary_mode = st.radio("Choose metric calculation mode:", ["Macro Average", "Class 1 as Positive"])
+                    binary_mode = st.radio("Choose how to calculate results:", ["Average across both categories", "Focus on one category"])
                     
-                    if binary_mode == "Class 1 as Positive":
+                    if binary_mode == "Focus on one category":
                         # For binary case, calculate metrics treating class 1 as positive
                         tn, fp, fn, tp = cm.ravel()
                         
@@ -190,148 +317,203 @@ if uploaded_file is not None:
                         f1 = f1_score(y_true, y_pred, zero_division=0)
                         
                         # Display confusion matrix visualization
-                        st.subheader("Confusion Matrix")
+                        st.subheader("Results Table")
                         
                         # Create DataFrame for better visualization
                         cm_df = pd.DataFrame(cm, 
-                            index=[f'True: {reverse_map[i]}' for i in range(num_classes)],
-                            columns=[f'Pred: {reverse_map[i]}' for i in range(num_classes)])
+                            index=[f'Actual: {reverse_map[i]}' for i in range(num_classes)],
+                            columns=[f'Predicted: {reverse_map[i]}' for i in range(num_classes)])
                         
                         st.dataframe(cm_df)
                         
                         # Display binary metrics
-                        st.subheader("Binary Classification Metrics")
+                        st.subheader("Results Summary")
                         
                         metrics_col1, metrics_col2 = st.columns(2)
                         
                         with metrics_col1:
-                            # F1 Score
-                            st.metric("F1 Score", f"{f1:.4f}")
+                            # Overall Score
+                            st.metric("Overall Accuracy Score", f"{f1:.4f}")
                             st.markdown("""
-                            **F1 Score Explanation:**  
-                            The F1 score is the harmonic mean of precision and recall, giving equal importance to both metrics.
-                            It ranges from 0 (worst) to 1 (best) and is particularly useful when the dataset is imbalanced.
+                            **What is the Overall Accuracy Score?**  
+                            This score combines how good our model is at correctly identifying items (precision) 
+                            and how good it is at finding all the items it should find (recall).
                             
-                            Formula: F1 = 2 × (Precision × Recall) / (Precision + Recall)
+                            A score of 1.0 means perfect performance, while 0.0 means the worst possible performance.
                             """)
                             
-                            # True Positive Rate (Recall/Sensitivity)
+                            # Discovery Rate (Recall/Sensitivity)
                             tpr = tp / (tp + fn) if (tp + fn) > 0 else 0
-                            st.metric("True Positive Rate (Recall/Sensitivity)", f"{tpr:.4f}")
+                            st.metric("Discovery Rate", f"{tpr:.4f}")
                             st.markdown("""
-                            **True Positive Rate Explanation:**  
-                            The proportion of actual positives that were correctly identified.
-                            This measures how good the model is at finding all positive cases.
+                            **What is the Discovery Rate?**  
+                            Out of all the items that actually belong to your main category, 
+                            what percentage did the model correctly identify?
                             
-                            Formula: TPR = TP / (TP + FN)
+                            Higher is better. A score of 1.0 means the model found all the items it should have found.
                             """)
                             
-                            # True Negative Rate (Specificity)
+                            # Rejection Rate (Specificity)
                             tnr = tn / (tn + fp) if (tn + fp) > 0 else 0
-                            st.metric("True Negative Rate (Specificity)", f"{tnr:.4f}")
+                            st.metric("Rejection Rate", f"{tnr:.4f}")
                             st.markdown("""
-                            **True Negative Rate Explanation:**  
-                            The proportion of actual negatives that were correctly identified.
-                            This measures how good the model is at avoiding false alarms.
+                            **What is the Rejection Rate?**  
+                            Out of all the items that don't belong to your main category, 
+                            what percentage did the model correctly reject?
                             
-                            Formula: TNR = TN / (TN + FP)
+                            Higher is better. A score of 1.0 means the model correctly rejected everything it should have.
                             """)
                         
                         with metrics_col2:
                             # True Positives
-                            st.metric("True Positives (TP)", tp)
+                            st.metric("Correct Identifications", tp)
                             st.markdown("""
-                            **True Positives Explanation:**  
-                            Cases that were actually positive and predicted as positive.
-                            Think of these as "correctly identified positives."
+                            **What are Correct Identifications?**  
+                            Items that actually belong to your main category and were 
+                            correctly identified as such by the model.
                             """)
                             
                             # False Positives
-                            st.metric("False Positives (FP)", fp)
+                            st.metric("False Alarms", fp)
                             st.markdown("""
-                            **False Positives Explanation:**  
-                            Cases that were actually negative but predicted as positive.
-                            These are also called "Type I errors" or "false alarms."
+                            **What are False Alarms?**  
+                            Items that don't actually belong to your main category, 
+                            but the model incorrectly said they do.
                             """)
                             
                             # False Negatives
-                            st.metric("False Negatives (FN)", fn)
+                            st.metric("Misses", fn)
                             st.markdown("""
-                            **False Negatives Explanation:**  
-                            Cases that were actually positive but predicted as negative.
-                            These are also called "Type II errors" or "misses."
+                            **What are Misses?**  
+                            Items that actually belong to your main category, 
+                            but the model failed to identify them.
                             """)
                             
                             # True Negatives
-                            st.metric("True Negatives (TN)", tn)
+                            st.metric("Correct Rejections", tn)
                             st.markdown("""
-                            **True Negatives Explanation:**  
-                            Cases that were actually negative and predicted as negative.
-                            Think of these as "correctly identified negatives."
+                            **What are Correct Rejections?**  
+                            Items that don't belong to your main category, 
+                            and the model correctly kept them out.
                             """)
                         
                         # Additional metrics
-                        st.subheader("Additional Metrics")
+                        st.subheader("Additional Information")
                         
                         col3, col4 = st.columns(2)
                         
                         with col3:
                             # Precision
-                            st.metric("Precision (Positive Predictive Value)", f"{precision:.4f}")
+                            st.metric("Correct Classification Rate", f"{precision:.4f}")
                             st.markdown("""
-                            **Precision Explanation:**  
-                            The proportion of predicted positives that were actually positive.
-                            This measures how trustworthy the positive predictions are.
+                            **What is the Correct Classification Rate?**  
+                            When the model says an item belongs to your main category, 
+                            how often is it right?
                             
-                            Formula: Precision = TP / (TP + FP)
+                            Higher is better. A score of 1.0 means every prediction was correct.
                             """)
                         
                         with col4:
                             # Accuracy
                             accuracy = (tp + tn) / (tp + tn + fp + fn)
-                            st.metric("Accuracy", f"{accuracy:.4f}")
+                            st.metric("Simple Accuracy", f"{accuracy:.4f}")
                             st.markdown("""
-                            **Accuracy Explanation:**  
-                            The proportion of all predictions that were correct.
-                            This measures overall correctness across both classes.
+                            **What is Simple Accuracy?**  
+                            The percentage of all predictions (both categories) that were correct.
                             
-                            Formula: Accuracy = (TP + TN) / (TP + TN + FP + FN)
+                            A score of 1.0 means every single prediction was correct.
+                            """)
+                        
+                        # Evaluate against risk tolerance threshold
+                        st.subheader("Risk Assessment")
+                        
+                        # Compare the F1 score with the threshold
+                        if f1 >= threshold:
+                            st.success(f"✅ Your model meets the required accuracy for your selected quality requirement! (Score: {f1:.4f}, Required: {threshold:.2f})")
+                            st.markdown(f"""
+                            **Recommendation**: Your model's accuracy is acceptable for your selected quality requirement.
+                            
+                            You can:
+                            - Deploy this model with confidence
+                            - Monitor performance over time to ensure it maintains this level of accuracy
+                            - Consider saving this model as your baseline
+                            """)
+                        else:
+                            st.error(f"❌ Your model does not meet the required accuracy. (Score: {f1:.4f}, Required: {threshold:.2f})")
+                            
+                            # Show targeted improvement suggestions based on issues detected
+                            if precision < threshold:
+                                st.warning(f"🔍 **Issue detected**: Low Correct Classification Rate ({precision:.4f})")
+                                st.markdown(f"""
+                                **Targeted fix**: Your model is saying "yes" too often, creating false alarms.
+                                
+                                Try:
+                                - Making your model more selective about what belongs to a category
+                                - Increasing the confidence threshold for positive predictions
+                                - Adding more examples of negative cases to your training data
+                                """)
+                            
+                            if recall < threshold:
+                                st.warning(f"🔍 **Issue detected**: Low Discovery Rate ({recall:.4f})")
+                                st.markdown(f"""
+                                **Targeted fix**: Your model is missing too many items it should find.
+                                
+                                Try:
+                                - Making your model less strict about what belongs to a category
+                                - Decreasing the confidence threshold for positive predictions
+                                - Adding more examples of positive cases to your training data
+                                """)
+                        
+                        # Always show general tips
+                        with st.expander("General Tips for Improving Your Results", expanded=f1 < threshold):
+                            st.markdown("""
+                            - **Low Correct Classification Rate** (many false alarms): Your model is saying "yes" too often. 
+                              Try making it more selective about what it identifies as belonging to a category.
+                            
+                            - **Low Discovery Rate** (many misses): Your model is missing too many items it should find. 
+                              Try making it less strict about what it considers to belong to a category.
+                            
+                            - **Low Overall Score**: Consider adding more examples, finding better features that distinguish 
+                              between categories, or trying a different type of model.
+                            
+                            - **Uneven Number of Items**: If some categories have very few examples compared to others, 
+                              try to collect more examples of the rare categories.
+                            
+                            - **Confusion Between Specific Categories**: Look at the Results Table to see which categories 
+                              are getting mixed up. Focus on finding ways to better distinguish between those specific categories.
                             """)
                     else:
                         # Display macro average metrics
-                        display_multiclass_metrics(y_true, y_pred, cm, reverse_map, num_classes)
+                        _ = display_multiclass_metrics(y_true, y_pred, cm, reverse_map, num_classes, threshold)
                 else:
                     # Multiclass classification case
-                    display_multiclass_metrics(y_true, y_pred, cm, reverse_map, num_classes)
+                    _ = display_multiclass_metrics(y_true, y_pred, cm, reverse_map, num_classes, threshold)
                 
-                # F1 Score explained with an analogy
-                st.subheader("Understanding F1 Score with an Analogy")
+                # Results explained with an analogy
+                st.subheader("Understanding These Results: A Simple Analogy")
                 st.markdown("""
-                **Fishing Analogy:**
+                **The Fishing Analogy:**
                 
                 Imagine you're fishing in a lake with both fish and logs. Your task is to catch only fish:
-                - **Precision** is the percentage of actual fish among everything you caught. If you caught 8 fish and 2 logs, your precision is 80%.
-                - **Recall** is the percentage of all the fish in the lake that you managed to catch. If there were 10 fish in the lake and you caught 8, your recall is 80%.
-                - **F1 Score** balances these two metrics. It will be high only if both precision and recall are reasonably high.
                 
-                A high F1 score means you're not only catching most of the fish (high recall) but also avoiding catching logs (high precision).
+                - **Correct Classification Rate** is like asking: "Of everything I caught, what percentage were actually fish?" 
+                  If you caught 8 fish and 2 logs, your correct classification rate is 80%.
                 
-                **Extending to Multiple Classes:**
+                - **Discovery Rate** is like asking: "What percentage of all fish in the lake did I manage to catch?"
+                  If there were 10 fish in the lake and you caught 8, your discovery rate is 80%.
                 
-                In a multi-class setting, it's like fishing for different types of fish (trout, bass, etc.) while avoiding logs. The F1 score is calculated for each type of fish separately, then averaged, giving you an overall measure of how well you're identifying each type of fish.
+                - **Overall Accuracy Score** balances these two rates. It will be high only if both are reasonably high.
+                  A high score means you're not only catching most of the fish (high discovery rate) but also avoiding catching logs (high correct classification rate).
+                
+                **For Multiple Categories:**
+                
+                If you're trying to catch different types of fish (trout, bass, etc.) while avoiding logs:
+                - The app calculates how well you're doing for each type of fish
+                - Then gives you an average score across all types
                 """)
                 
-                # Tips for improving the metrics
-                st.subheader("Tips for Improving Classification Performance")
-                st.markdown("""
-                - **Low Precision (many false positives)**: Your model is too "eager" to predict certain classes. Try adjusting the classification thresholds.
-                - **Low Recall (many false negatives)**: Your model is missing too many cases of certain classes. Try rebalancing your training data.
-                - **Low F1 Score**: Consider feature engineering, trying different algorithms, or collecting more training data.
-                - **Imbalanced Classes**: Use techniques like oversampling, undersampling, or SMOTE to address class imbalance.
-                - **Confusion Between Specific Classes**: Look at the confusion matrix to identify which classes are getting mixed up, then focus on features that better distinguish between them.
-                """)
             except Exception as e:
-                st.error(f"Error calculating metrics: {str(e)}")
+                st.error(f"Error calculating results: {str(e)}")
                 st.info("Debug information: Please check your data types and ensure you have selected the correct columns.")
         
     except Exception as e:
@@ -339,10 +521,10 @@ if uploaded_file is not None:
 else:
     # Display sample data option
     if st.checkbox("Try with sample data"):
-        data_type = st.radio("Choose sample data type:", ["Binary Classification", "Multi-class Classification"])
+        data_type = st.radio("Choose sample data type:", ["Two Categories", "Multiple Categories"])
         
-        if data_type == "Binary Classification":
-            st.info("Loading sample binary classification data...")
+        if data_type == "Two Categories":
+            st.info("Loading sample data with two categories...")
             
             # Create sample binary data
             sample_data = {
@@ -352,7 +534,7 @@ else:
             
             sample_df = pd.DataFrame(sample_data)
         else:
-            st.info("Loading sample multi-class classification data...")
+            st.info("Loading sample data with multiple categories...")
             
             # Create sample multi-class data
             sample_data = {
@@ -377,7 +559,7 @@ else:
         y_pred = sample_df[predicted_col].values
         
         # Convert to numeric if needed
-        if data_type == "Multi-class Classification":
+        if data_type == "Multiple Categories":
             # Create mapping
             unique_values = sorted(list(set(y_true) | set(y_pred)))
             value_map = {val: i for i, val in enumerate(unique_values)}
@@ -393,18 +575,31 @@ else:
             cm = confusion_matrix(y_true, y_pred)
             
             # Display confusion matrix visualization
-            st.subheader("Sample Confusion Matrix")
+            st.subheader("Sample Results Table")
             
             # Create DataFrame for better visualization
             cm_df = pd.DataFrame(cm, 
-                index=[f'True: {reverse_map[i]}' for i in range(len(unique_values))],
-                columns=[f'Pred: {reverse_map[i]}' for i in range(len(unique_values))])
+                index=[f'Actual: {reverse_map[i]}' for i in range(len(unique_values))],
+                columns=[f'Predicted: {reverse_map[i]}' for i in range(len(unique_values))])
             
             st.dataframe(cm_df)
             
-            # Display metrics
+            # Calculate F1 score
             f1_macro = f1_score(y_true, y_pred, average='macro')
-            st.metric("F1 Score (Macro)", f"{f1_macro:.4f}")
+            
+            # Display metrics
+            st.metric("Overall Accuracy Score", f"{f1_macro:.4f}")
+            
+            # Evaluate against risk tolerance threshold
+            st.subheader("Risk Assessment")
+            
+            # Compare F1 score with threshold
+            if f1_macro >= threshold:
+                st.success(f"✅ Your model meets the required accuracy for your selected quality requirement! (Score: {f1_macro:.4f}, Required: {threshold:.2f})")
+            else:
+                st.error(f"❌ Your model does not meet the required accuracy. (Score: {f1_macro:.4f}, Required: {threshold:.2f})")
+                
+            st.write("This is just a sample. Upload your own data to see results for your specific prediction problem.")
         else:
             # Calculate confusion matrix for binary case
             cm = confusion_matrix(y_true, y_pred)
@@ -414,34 +609,40 @@ else:
             f1 = f1_score(y_true, y_pred)
             
             # Display confusion matrix visualization
-            st.subheader("Sample Confusion Matrix")
-            cm_df = pd.DataFrame([
-                [tp, fp],
-                [fn, tn]
-            ], 
-            index=['Actual Positive', 'Actual Negative'],
-            columns=['Predicted Positive', 'Predicted Negative'])
+            st.subheader("Sample Results Table")
+            cm_df = pd.DataFrame(cm,
+                index=['Actual: 1', 'Actual: 0'],
+                columns=['Predicted: 1', 'Predicted: 0'])
             
             st.dataframe(cm_df)
             
             # Display metrics
-            st.metric("F1 Score", f"{f1:.4f}")
-        
-        st.write("This is just a sample. Upload your own data to calculate metrics for your specific classification problem.")
+            st.metric("Overall Accuracy Score", f"{f1:.4f}")
+            
+            # Evaluate against risk tolerance threshold
+            st.subheader("Risk Assessment")
+            
+            # Compare F1 score with threshold
+            if f1 >= threshold:
+                st.success(f"✅ Your model meets the required accuracy for your selected quality requirement! (Score: {f1:.4f}, Required: {threshold:.2f})")
+            else:
+                st.error(f"❌ Your model does not meet the required accuracy. (Score: {f1:.4f}, Required: {threshold:.2f})")
+                
+            st.write("This is just a sample. Upload your own data to see results for your specific prediction problem.")
 
 # Add instructions at the bottom
 st.markdown("---")
 st.markdown("""
 ### How to use this app:
-1. Upload a CSV or Excel file containing your classification data
-2. Select the columns containing ground truth and predicted values
-3. Click "Calculate Metrics" to see the results
-4. Review the detailed metrics and explanations to understand your model's performance
+1. Upload a CSV or Excel file containing your prediction results
+2. Select the columns containing actual values and predicted values
+3. Click "Show Results" to see how well your predictions performed
+4. Review the detailed results and explanations to understand your model's performance
 
 Your data should have at least two columns:
-- One column with the actual (ground truth) class labels
-- One column with the predicted class labels
+- One column with the actual (correct) category labels
+- One column with the predicted category labels from your model
 
-This app supports both binary classification (two classes) and multi-class classification (three or more classes).
-For multi-class data, metrics are calculated using macro averaging by default.
+This app works with both two-category data (like yes/no, spam/not spam) and 
+multi-category data (like low/medium/high, or different product categories).
 """)
